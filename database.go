@@ -133,24 +133,23 @@ type Tx struct {
 	committed bool
 	driver    *Driver
 	sqlTx     *sql.Tx
-	ctx       context.Context
 	now       time.Time
 	span      trace.Span
 }
 
 // BeginTx ensures a database transaction is in place.
 //
-// Make sure to always close the returned Tx instance by invoking[Tx.Close].
+// Make sure to always close the returned Tx instance by invoking[Tx.CloseTx].
 //
-// Invoke [Tx.Commit] to commit all database updates performed within the BeginTx
-// block. If [Tx.Commit] is not called before the call to [Tx.Close], it will
+// Invoke [Tx.CommitTx] to commit all database updates performed within the BeginTx
+// block. If [Tx.CommitTx] is not called before the call to [Tx.CloseTx], it will
 // be implicitly rolled back.
 //
 // In case of an outer to BeginTx call for the identical context, the already
 // opened transaction is re-used. Closing the transaction behaves in the
 // same manner. Only after the last BeginTx block is closed by invoking
-// [Tx.Close] and only if all BeginTx blocks have been commited by invoking
-// [Tx.Commit] the actual database transaction is committed.
+// [Tx.CloseTx] and only if all BeginTx blocks have been commited by invoking
+// [Tx.CommitTx] the actual database transaction is committed.
 func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 	outerTx, nestedTx := ctx.Value(d).(*Tx)
 	if nestedTx {
@@ -158,7 +157,6 @@ func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 		tx.outerTx = outerTx
 		tx.driver = d
 		tx.sqlTx = outerTx.sqlTx
-		tx.ctx = ctx
 		tx.now = outerTx.now
 		return ctx, tx, nil
 	}
@@ -172,10 +170,10 @@ func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 	tx := txPool.Get().(*Tx)
 	tx.driver = d
 	tx.sqlTx = sqlTx
-	tx.ctx = context.WithValue(traceCtx, d, tx)
 	tx.now = time.Now().UTC()
 	tx.span = span
-	return tx.ctx, tx, nil
+	txCtx := context.WithValue(traceCtx, d, tx)
+	return txCtx, tx, nil
 }
 
 // Now returns the time the transaction was started, hence returning a consistent
@@ -200,9 +198,9 @@ func (tx *Tx) QueryTx(ctx context.Context, query string, args ...any) (*sql.Rows
 }
 
 // Commit commits all changes since the corresponding [Driver.BeginTx] call.
-// See [Driver.BeginTx] and [Tx.Close] for details of the database transaction
+// See [Driver.BeginTx] and [Tx.CloseTx] for details of the database transaction
 // lifecycle.
-func (tx *Tx) Commit(ctx context.Context) error {
+func (tx *Tx) CommitTx(ctx context.Context) error {
 	if tx.committed {
 		return fmt.Errorf("transaction already committed")
 	}
@@ -220,15 +218,15 @@ func (tx *Tx) Commit(ctx context.Context) error {
 
 // Close closes the transaction returned by [Driver.BeginTx].
 //
-// If [Tx.Commit] has not been invoked for the transaction, the
+// If [Tx.CommitTx] has not been invoked for the transaction, the
 // transaction is implicitly rolled back.
-func (tx *Tx) Close() error {
+func (tx *Tx) CloseTx(ctx context.Context) error {
 	if tx == nil {
 		return nil
 	}
 	var err error
 	if !tx.committed {
-		err = tx.driver.rollbackTx(tx.ctx, tx.sqlTx)
+		err = tx.driver.rollbackTx(ctx, tx.sqlTx)
 		if err != nil {
 			traceError(tx.span, err)
 		}
@@ -240,7 +238,6 @@ func (tx *Tx) Close() error {
 	tx.committed = false
 	tx.driver = nil
 	tx.sqlTx = nil
-	tx.ctx = nil
 	tx.now = time.Time{}
 	tx.span = nil
 	txPool.Put(tx)
