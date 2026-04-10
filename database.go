@@ -372,20 +372,12 @@ func (d *Driver) UpdateSchema(ctx context.Context, target Schema) (Schema, Schem
 	}
 	currentVersion := fromVersion
 	for currentVersion != target {
+		nextVersion := currentVersion + 1
 		tx, err = d.beginTx(traceCtx)
 		if err != nil {
 			return fromVersion, currentVersion, traceError(span, err)
 		}
-		nextVersion := currentVersion + 1
-		d.logger.Info("updating database schema", slog.Int("from", int(currentVersion)), slog.Int("to", int(nextVersion)))
-		if 0 <= nextVersion && nextVersion < Schema(len(d.schemaScripts)) {
-			err = d.scriptTx(traceCtx, tx, d.schemaScripts[nextVersion])
-			if err == nil {
-				err = d.scriptExecTx(traceCtx, tx, fmt.Sprintf("UPDATE version SET schema=%d", nextVersion))
-			}
-		} else {
-			err = fmt.Errorf("unrecognized database schema version: %d", currentVersion)
-		}
+		err = d.execSchemaScript(traceCtx, tx, currentVersion, nextVersion)
 		if err != nil {
 			err = fmt.Errorf("database schema update failure (cause: %w)", err)
 			return fromVersion, currentVersion, traceError(span, errors.Join(err, d.rollbackTx(traceCtx, tx)))
@@ -398,6 +390,23 @@ func (d *Driver) UpdateSchema(ctx context.Context, target Schema) (Schema, Schem
 		currentVersion = nextVersion
 	}
 	return fromVersion, currentVersion, nil
+}
+
+func (d *Driver) execSchemaScript(ctx context.Context, tx *sql.Tx, currentVersion, nextVersion Schema) error {
+	d.logger.Info("updating database schema", slog.Int("from", int(currentVersion)), slog.Int("to", int(nextVersion)))
+	if 0 <= nextVersion && nextVersion < Schema(len(d.schemaScripts)) {
+		err := d.scriptTx(ctx, tx, d.schemaScripts[nextVersion])
+		if err != nil {
+			return err
+		}
+		err = d.scriptExecTx(ctx, tx, fmt.Sprintf("UPDATE version SET schema=%d", nextVersion))
+		if err != nil {
+			return err
+		}
+	} else {
+		return fmt.Errorf("unrecognized database schema version: %d", currentVersion)
+	}
+	return nil
 }
 
 func (d *Driver) querySchemaVersion(ctx context.Context, tx *sql.Tx) (Schema, error) {
