@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// Package sqlite provides a PostgreSQL based database configuration.
 package postgres
 
 import (
@@ -26,8 +27,10 @@ import (
 	"github.com/tdrn-org/go-tlsconf/tlsclient"
 )
 
+// Name of PostgreSQL database configuration.
 const Name database.Name = "postgres"
 
+// Config represents the PostgreSQL database configuration.
 type Config struct {
 	name          database.Name
 	address       string
@@ -37,6 +40,7 @@ type Config struct {
 	schemaScripts [][]byte
 }
 
+// NewConfig creates a new PostgreSQL database configuration using the given options.
 func NewConfig(dbName, user, password string, options ...ConfigSetter) *Config {
 	config := &Config{
 		name:          Name,
@@ -52,14 +56,18 @@ func NewConfig(dbName, user, password string, options ...ConfigSetter) *Config {
 	return config
 }
 
+// Name gets the name of the database configuration.
 func (c *Config) Name() database.Name {
 	return c.name
 }
 
+// DriverName gets the name of the sql driver providing access to the database
+// represented by this configuration.
 func (c *Config) DriverName() string {
 	return "pgx"
 }
 
+// DSN get the Data Source Name to be used for accessing the database.
 func (c *Config) DSN() string {
 	connString := fmt.Sprintf("postgres://%s:%s@%s/%s", c.user, c.password, c.address, c.dbName)
 	connConfig, _ := pgx.ParseConfig(connString)
@@ -68,6 +76,7 @@ func (c *Config) DSN() string {
 	return stdlib.RegisterConnConfig(connConfig)
 }
 
+// DSN get the Data Source Name with any sensitive data redacted.
 func (c *Config) RedactedDSN() string {
 	return fmt.Sprintf("postgres://%s:***@%s/%s", c.user, c.address, c.dbName)
 }
@@ -75,26 +84,36 @@ func (c *Config) RedactedDSN() string {
 //go:embed schema.0.sql
 var schema0Script []byte
 
+// SchemaScripts gets the schema updated scripts to be applied to the database
+// during schema initialization or a schema update.
 func (c *Config) SchemaScripts() [][]byte {
 	return c.schemaScripts
 }
 
+// ConfigSetter interface is used to set database configuration options
+// during a [NewConfig] call.
 type ConfigSetter interface {
 	Apply(*Config)
 }
 
+// ConfigSetterFunc functions are used to set database configuration options
+// during a [NewConfig] call.
 type ConfigSetterFunc func(*Config)
 
 func (f ConfigSetterFunc) Apply(c *Config) {
 	f(c)
 }
 
+// WithSchemaScripts defines the schema update scripts to be applied
+// during database schema update.
 func WithSchemaScripts(scripts ...[]byte) ConfigSetter {
 	return ConfigSetterFunc(func(c *Config) {
 		c.schemaScripts = append(c.schemaScripts, scripts...)
 	})
 }
 
+// WithAddress sets the address string to use to connect to
+// the PostgreSQL database.
 func WithAddress(address string) ConfigSetter {
 	return ConfigSetterFunc(func(c *Config) {
 		c.address = address
