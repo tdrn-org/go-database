@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+// Package database provides a simple layer on top of database/sql to
+// ease common database tasks like transaction handling, prepared
+// statement caching, schema updates and the like.
 package database
 
 import (
@@ -37,27 +40,41 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// Schema version type.
 type Schema int
 
 const (
+	// SchemaNone indicates no schema has been setup so far.
 	SchemaNone Schema = -1
-	Schema0    Schema = 0
+	// Schema0 indicates the basic schema is in place.
+	Schema0 Schema = 0
 )
 
-type Name string
+// Type represents the database type.
+type Type string
 
-func (name Name) String() string {
+func (name Type) String() string {
 	return string(name)
 }
 
+// Config interface provides a generic way to different
+// database drivers.
 type Config interface {
-	Name() Name
+	// Type gets the database type represented by this configuration.
+	Type() Type
+	// DriverName gets the name of the sql driver providing access to the database
+	// represented by this configuration.
 	DriverName() string
+	// DSN get the Data Source Name to be used for accessing the database.
 	DSN() string
+	// DSN get the Data Source Name with any sensitive data redacted.
 	RedactedDSN() string
+	// SchemaScripts gets the schema updated scripts to be applied to the database
+	// during schema initialization or a schema update.
 	SchemaScripts() [][]byte
 }
 
+// Driver represents an open database connection ready to execute SQL statements.
 type Driver struct {
 	config        Config
 	db            *sql.DB
@@ -68,13 +85,14 @@ type Driver struct {
 	mutex         sync.RWMutex
 }
 
+// Open opens the database represented by the given [Config] instance.
 func Open(config Config) (*Driver, error) {
-	name := config.Name()
-	logger := slog.With(slog.Any("database", name))
-	logger.Debug("opening database", slog.String("dsn", config.RedactedDSN()))
+	databaseType := config.Type()
+	logger := slog.With(slog.Any("database", databaseType), slog.String("dsn", config.RedactedDSN()))
+	logger.Info("opening database")
 	db, err := sql.Open(config.DriverName(), config.DSN())
 	if err != nil {
-		return nil, fmt.Errorf("failed open %s database (cause: %w)", name, err)
+		return nil, fmt.Errorf("failed to open %s database (cause: %w)", databaseType, err)
 	}
 	driver := &Driver{
 		config:        config,
@@ -82,18 +100,25 @@ func Open(config Config) (*Driver, error) {
 		preparedStmts: make(map[string]*sql.Stmt),
 		schemaScripts: config.SchemaScripts(),
 		logger:        logger,
-		tracer:        otel.Tracer(reflect.TypeFor[Driver]().PkgPath(), trace.WithInstrumentationAttributes(attribute.Stringer("database", name))),
+		tracer:        otel.Tracer(reflect.TypeFor[Driver]().PkgPath(), trace.WithInstrumentationAttributes(attribute.Stringer("database", databaseType), attribute.String("dsn", config.RedactedDSN()))),
 	}
 	return driver, nil
 }
 
+// Ping pings the database (see [sql.DB.PingContext]).
 func (d *Driver) Ping(ctx context.Context) error {
 	return d.db.PingContext(ctx)
 }
 
+// Close closes the database connection and all related resources.
 func (d *Driver) Close() error {
-	d.logger.Debug("closing database")
-	return d.db.Close()
+	d.logger.Info("closing database")
+	closeErrs := make([]error, 1+len(d.preparedStmts))
+	closeErrs = append(closeErrs, d.db.Close())
+	for _, preparedStmt := range d.preparedStmts {
+		closeErrs = append(closeErrs, preparedStmt.Close())
+	}
+	return errors.Join(closeErrs...)
 }
 
 var txPool sync.Pool = sync.Pool{
@@ -102,6 +127,7 @@ var txPool sync.Pool = sync.Pool{
 	},
 }
 
+// Tx represents a database transation (see [BeginTx]).
 type Tx struct {
 	outerTx   *Tx
 	committed bool
@@ -112,6 +138,19 @@ type Tx struct {
 	span      trace.Span
 }
 
+// BeginTx ensures a database transaction is in place.
+//
+// Make sure to always close the returned Tx instance by invoking[Tx.Close].
+//
+// Invoke [Tx.Commit] to commit all database updates performed within the BeginTx
+// block. If [Tx.Commit] is not called before the call to [Tx.Close], it will
+// be implicitly rolled back.
+//
+// In case of an outer to BeginTx call for the identical context, the already
+// opened transaction is re-used. Closing the transaction behaves in the
+// same manner. Only after the last BeginTx block is closed by invoking
+// [Tx.Close] and only if all BeginTx blocks have been commited by invoking
+// [Tx.Commit] the actual database transaction is committed.
 func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 	outerTx, nestedTx := ctx.Value(d).(*Tx)
 	if nestedTx {
@@ -139,22 +178,30 @@ func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 	return tx.ctx, tx, nil
 }
 
+// Now returns the time the transaction was started, hence returning a consistent
+// time value across the whole transaction lifecycle.
 func (tx *Tx) Now() time.Time {
 	return tx.now
 }
 
+// ExecTx executes a SQL statement (see [sql.DB.ExecContext]).
 func (tx *Tx) ExecTx(ctx context.Context, query string, args ...any) error {
 	return tx.driver.execTx(ctx, tx.sqlTx, query, args...)
 }
 
+// QueryRowTx queries a single row (see [sql.DB.QueryRowContext]).
 func (tx *Tx) QueryRowTx(ctx context.Context, query string, args ...any) (*sql.Row, error) {
 	return tx.driver.queryRowTx(ctx, tx.sqlTx, query, args...)
 }
 
+// QueryTx executes a database query (see [sql.DB.QueryContext]).
 func (tx *Tx) QueryTx(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	return tx.driver.queryTx(ctx, tx.sqlTx, query, args...)
 }
 
+// Commit commits all changes since the corresponding [Driver.BeginTx] call.
+// See [Driver.BeginTx] and [Tx.Close] for details of the database transaction
+// lifecycle.
 func (tx *Tx) Commit(ctx context.Context) error {
 	if tx.committed {
 		return fmt.Errorf("transaction already committed")
@@ -171,12 +218,17 @@ func (tx *Tx) Commit(ctx context.Context) error {
 	return nil
 }
 
-func (tx *Tx) Close() {
+// Close closes the transaction returned by [Driver.BeginTx].
+//
+// If [Tx.Commit] has not been invoked for the transaction, the
+// transaction is implicitly rolled back.
+func (tx *Tx) Close() error {
 	if tx == nil {
-		return
+		return nil
 	}
+	var err error
 	if !tx.committed {
-		err := tx.driver.rollbackTx(tx.ctx, tx.sqlTx)
+		err = tx.driver.rollbackTx(tx.ctx, tx.sqlTx)
 		if err != nil {
 			traceError(tx.span, err)
 		}
@@ -192,6 +244,7 @@ func (tx *Tx) Close() {
 	tx.now = time.Time{}
 	tx.span = nil
 	txPool.Put(tx)
+	return err
 }
 
 func (d *Driver) beginTx(ctx context.Context) (*sql.Tx, error) {
@@ -299,6 +352,11 @@ func (d *Driver) prepareStmt(ctx context.Context, query string) (*sql.Stmt, erro
 	return stmt, nil
 }
 
+// UpdateSchema is used to update the database schema to the given target schema version.
+//
+// The current schema version is determined by querying the database. Any necessary schema
+// update is performed by getting the update scripts via [Config.SchemaScripts] and executing
+// them as needed.
 func (d *Driver) UpdateSchema(ctx context.Context, target Schema) (Schema, Schema, error) {
 	traceCtx, span := d.tracer.Start(ctx, "UpdateSchema", trace.WithSpanKind(trace.SpanKindInternal))
 	defer span.End()
@@ -364,7 +422,7 @@ func (d *Driver) scriptTx(ctx context.Context, tx *sql.Tx, script []byte) error 
 		return err
 	}
 	for {
-		statement, err := reader.readStatement()
+		statement, err := reader.ReadStatement()
 		if errors.Is(err, io.EOF) {
 			return nil
 		} else if err != nil {
@@ -393,26 +451,27 @@ func (d *Driver) scriptExecTx(ctx context.Context, tx *sql.Tx, statement string)
 	return nil
 }
 
+// NewID generates a id suitable for use as a primary key.
 func NewID() string {
 	return uuid.NewString()
 }
 
+// Now gets the current time as database compatible int64 type and based on UTC timezone.
 func Now() int64 {
 	return Time2DB(time.Now().UTC())
 }
 
+// Time2DB converts the given [time.Time] value to the corresponding database time value.
 func Time2DB(t time.Time) int64 {
 	return t.UnixMicro()
 }
 
+// DB2Time converts the given database time value to the corresponding [time.Time] value.
 func DB2Time(msec int64) time.Time {
 	return time.UnixMicro(msec)
 }
 
-func DB2JSONTime(msec int64) string {
-	return DB2Time(msec).Format(time.RFC3339)
-}
-
+// NoRows checks whether the given error is [sql.ErrNoRows].
 func NoRows(err error) bool {
 	return errors.Is(err, sql.ErrNoRows)
 }

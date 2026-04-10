@@ -25,20 +25,21 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Name of SQLite3 database configuration.
-const Name database.Name = "sqlite"
+// Type of SQLite3 database configurations.
+const Type database.Type = "sqlite"
 
 // Config represents the SQLite3 database configuration.
 type Config struct {
-	name          database.Name
 	file          string
 	schemaScripts [][]byte
 }
 
+//go:embed schema.0.sql
+var schema0Script []byte
+
 // NewConfig creates a new SQLite3 database configuration using the given options.
 func NewConfig(file string, options ...ConfigSetter) *Config {
 	config := &Config{
-		name:          Name,
 		file:          file,
 		schemaScripts: [][]byte{schema0Script},
 	}
@@ -48,9 +49,9 @@ func NewConfig(file string, options ...ConfigSetter) *Config {
 	return config
 }
 
-// Name gets the name of the database configuration.
-func (c *Config) Name() database.Name {
-	return c.name
+// Type gets the database type represented by this configuration.
+func (c *Config) Type() database.Type {
+	return Type
 }
 
 // DriverName gets the name of the sql driver providing access to the database
@@ -71,9 +72,6 @@ func (c *Config) DSN() string {
 func (c *Config) RedactedDSN() string {
 	return c.DSN()
 }
-
-//go:embed schema.0.sql
-var schema0Script []byte
 
 // SchemaScripts gets the schema updated scripts to be applied to the database
 // during schema initialization or a schema update.

@@ -17,6 +17,7 @@
 package database_test
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
@@ -67,4 +68,23 @@ func testDatabase(t0 *testing.T, c database.Config) {
 		require.NoError(t, err)
 		require.NoError(t, db.Close())
 	})
+}
+
+func TestNewID(t *testing.T) {
+	id1 := database.NewID()
+	require.NotEmpty(t, id1)
+	id2 := database.NewID()
+	require.NotEqual(t, id1, id2)
+}
+
+func TestTime2DB2Time(t *testing.T) {
+	now := database.Now()
+	timeValue := database.DB2Time(now)
+	databaseValue := database.Time2DB(timeValue)
+	require.Equal(t, now, databaseValue)
+}
+
+func TestNoRows(t *testing.T) {
+	require.True(t, database.NoRows(sql.ErrNoRows))
+	require.False(t, database.NoRows(sql.ErrTxDone))
 }

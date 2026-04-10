@@ -27,14 +27,17 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Name of memory database configuration.
-const Name database.Name = "memory"
+// Type of memory database configurations.
+const Type database.Type = "memory"
 
 // Config represents the memory database configuration.
 type Config struct {
 	file          string
 	schemaScripts [][]byte
 }
+
+//go:embed schema.0.sql
+var schema0Script []byte
 
 // NewConfig creates a new memory database configuration using the given options.
 func NewConfig(options ...ConfigSetter) *Config {
@@ -48,9 +51,9 @@ func NewConfig(options ...ConfigSetter) *Config {
 	return config
 }
 
-// Name gets the name of the database configuration.
-func (c *Config) Name() database.Name {
-	return Name
+// Type gets the database type represented by this configuration.
+func (c *Config) Type() database.Type {
+	return Type
 }
 
 // DriverName gets the name of the sql driver providing access to the database
@@ -71,9 +74,6 @@ func (c *Config) DSN() string {
 func (c *Config) RedactedDSN() string {
 	return c.DSN()
 }
-
-//go:embed schema.0.sql
-var schema0Script []byte
 
 // SchemaScripts gets the schema updated scripts to be applied to the database
 // during schema initialization or a schema update.

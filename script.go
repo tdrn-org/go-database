@@ -42,7 +42,7 @@ func (r *sqlScriptReader) LineNo() int {
 	return r.lineNo
 }
 
-func (r *sqlScriptReader) readStatement() (string, error) {
+func (r *sqlScriptReader) ReadStatement() (string, error) {
 	statement := &strings.Builder{}
 	for {
 		line, excessive, err := r.reader.ReadLine()

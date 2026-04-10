@@ -27,12 +27,11 @@ import (
 	"github.com/tdrn-org/go-tlsconf/tlsclient"
 )
 
-// Name of PostgreSQL database configuration.
-const Name database.Name = "postgres"
+// Type of PostgreSQL database configurations.
+const Type database.Type = "postgres"
 
 // Config represents the PostgreSQL database configuration.
 type Config struct {
-	name          database.Name
 	address       string
 	dbName        string
 	user          string
@@ -40,10 +39,12 @@ type Config struct {
 	schemaScripts [][]byte
 }
 
+//go:embed schema.0.sql
+var schema0Script []byte
+
 // NewConfig creates a new PostgreSQL database configuration using the given options.
 func NewConfig(dbName, user, password string, options ...ConfigSetter) *Config {
 	config := &Config{
-		name:          Name,
 		address:       "localhost:5432",
 		dbName:        dbName,
 		user:          user,
@@ -56,9 +57,9 @@ func NewConfig(dbName, user, password string, options ...ConfigSetter) *Config {
 	return config
 }
 
-// Name gets the name of the database configuration.
-func (c *Config) Name() database.Name {
-	return c.name
+// Type gets the database type represented by this configuration.
+func (c *Config) Type() database.Type {
+	return Type
 }
 
 // DriverName gets the name of the sql driver providing access to the database
@@ -80,9 +81,6 @@ func (c *Config) DSN() string {
 func (c *Config) RedactedDSN() string {
 	return fmt.Sprintf("postgres://%s:***@%s/%s", c.user, c.address, c.dbName)
 }
-
-//go:embed schema.0.sql
-var schema0Script []byte
 
 // SchemaScripts gets the schema updated scripts to be applied to the database
 // during schema initialization or a schema update.
