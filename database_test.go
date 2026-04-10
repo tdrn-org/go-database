@@ -18,6 +18,7 @@ package database_test
 
 import (
 	"database/sql"
+	_ "embed"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,14 +30,17 @@ import (
 	"github.com/tdrn-org/go-database/sqlite"
 )
 
+//go:embed testdata/schema.1.sql
+var schema1Script []byte
+
 func TestMemory(t *testing.T) {
-	config := memory.NewConfig()
+	config := memory.NewConfig(memory.WithSchemaScripts(schema1Script))
 	testDatabase(t, config)
 }
 
 func TestSQLite(t *testing.T) {
 	tempDir := t.TempDir()
-	config := sqlite.NewConfig(filepath.Join(tempDir, "test.db"))
+	config := sqlite.NewConfig(filepath.Join(tempDir, "test.db"), sqlite.WithSchemaScripts(schema1Script))
 	testDatabase(t, config)
 }
 
@@ -47,27 +51,72 @@ func TestPostgres(t *testing.T) {
 		t.Skip("PostgreSQL not available")
 	}
 	address := host + ":" + port
-	config := postgres.NewConfig("postgres", "postgres", "postgres", postgres.WithAddress(address))
+	config := postgres.NewConfig("postgres", "postgres", "postgres", postgres.WithAddress(address), postgres.WithSchemaScripts(schema1Script))
 	testDatabase(t, config)
 }
 
-func testDatabase(t0 *testing.T, c database.Config) {
-	t0.Run("openPingClose", func(t *testing.T) {
-		db, err := database.Open(c)
+func testDatabase(t *testing.T, c database.Config) {
+	// Open
+	db, err := database.Open(c)
+	require.NoError(t, err)
+
+	// Ping
+	require.NoError(t, db.Ping(t.Context()))
+
+	// Update schema
+	target := database.Schema(1)
+	from, to, err := db.UpdateSchema(t.Context(), target)
+	require.NoError(t, err)
+	require.Equal(t, database.SchemaNone, from)
+	require.Equal(t, target, to)
+
+	// Commit
+	var commitId string
+	{
+		txCtx, tx, err := db.BeginTx(t.Context())
 		require.NoError(t, err)
-		require.NoError(t, db.Ping(t.Context()))
-		require.NoError(t, db.Close())
-	})
-	t0.Run("updateSchema", func(t *testing.T) {
-		db, err := database.Open(c)
+		commitId = database.NewID()
+		err = tx.ExecTx(txCtx, "INSERT INTO value(id,value) VALUES($1,$2)", commitId, t.Name())
 		require.NoError(t, err)
-		from, to, err := db.UpdateSchema(t.Context(), database.Schema0)
+		err = tx.CommitTx(txCtx)
 		require.NoError(t, err)
-		require.Equal(t, database.SchemaNone, from)
-		require.Equal(t, database.Schema0, to)
+		require.NoError(t, tx.CloseTx(txCtx))
+	}
+	{
+		txCtx, tx, err := db.BeginTx(t.Context())
 		require.NoError(t, err)
-		require.NoError(t, db.Close())
-	})
+		row, err := tx.QueryRowTx(txCtx, "SELECT value FROM value WHERE id=$1", commitId)
+		require.NoError(t, err)
+		var value string
+		err = row.Scan(&value)
+		require.NoError(t, err)
+		require.Equal(t, t.Name(), value)
+		require.NoError(t, tx.CloseTx(txCtx))
+	}
+
+	// Rollback
+	var rollbackId string
+	{
+		txCtx, tx, err := db.BeginTx(t.Context())
+		require.NoError(t, err)
+		rollbackId = database.NewID()
+		err = tx.ExecTx(txCtx, "INSERT INTO value(id,value) VALUES($1,$2)", rollbackId, t.Name())
+		require.NoError(t, err)
+		require.NoError(t, tx.CloseTx(txCtx))
+	}
+	{
+		txCtx, tx, err := db.BeginTx(t.Context())
+		require.NoError(t, err)
+		row, err := tx.QueryRowTx(txCtx, "SELECT value FROM value WHERE id=$1", rollbackId)
+		require.NoError(t, err)
+		var value string
+		err = row.Scan(&value)
+		require.True(t, database.NoRows(err))
+		require.NoError(t, tx.CloseTx(txCtx))
+	}
+
+	// Close
+	require.NoError(t, db.Close())
 }
 
 func TestNewID(t *testing.T) {
