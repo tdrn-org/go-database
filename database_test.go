@@ -17,6 +17,7 @@
 package database_test
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -39,8 +40,13 @@ func TestSQLite(t *testing.T) {
 }
 
 func TestPostgres(t *testing.T) {
-	t.Skip()
-	config := postgres.NewConfig("idpd", "idpd", "secret")
+	host := os.Getenv("POSTGRES_HOST")
+	port := os.Getenv("POSTGRES_PORT")
+	if host == "" || port == "" {
+		t.Skip("PostgreSQL not available")
+	}
+	address := host + ":" + port
+	config := postgres.NewConfig("postgres", "postgres", "postgres", postgres.WithAddress(address))
 	testDatabase(t, config)
 }
 
