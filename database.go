@@ -381,7 +381,7 @@ func (d *Driver) UpdateSchema(ctx context.Context, target Schema) (Schema, Schem
 		if 0 <= nextVersion && nextVersion < Schema(len(d.schemaScripts)) {
 			err = d.scriptTx(traceCtx, tx, d.schemaScripts[nextVersion])
 			if err == nil {
-				err = d.scriptExecTx(traceCtx, tx, fmt.Sprintf("INSERT INTO version(schema) VALUES(%d)", nextVersion))
+				err = d.scriptExecTx(traceCtx, tx, fmt.Sprintf("UPDATE version SET schema=%d", nextVersion))
 			}
 		} else {
 			err = fmt.Errorf("unrecognized database schema version: %d", currentVersion)
