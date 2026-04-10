@@ -56,6 +56,8 @@ func TestPostgres(t *testing.T) {
 }
 
 func testDatabase(t *testing.T, c database.Config) {
+	const insertValueSQL string = "INSERT INTO value(id,value) VALUES($1,$2)"
+	const selectValueSQL string = "SELECT value FROM value WHERE id=$1"
 	// Open
 	db, err := database.Open(c)
 	require.NoError(t, err)
@@ -76,7 +78,7 @@ func testDatabase(t *testing.T, c database.Config) {
 		txCtx, tx, err := db.BeginTx(t.Context())
 		require.NoError(t, err)
 		commitId = database.NewID()
-		err = tx.ExecTx(txCtx, "INSERT INTO value(id,value) VALUES($1,$2)", commitId, t.Name())
+		err = tx.ExecTx(txCtx, insertValueSQL, commitId, t.Name())
 		require.NoError(t, err)
 		err = tx.CommitTx(txCtx)
 		require.NoError(t, err)
@@ -85,12 +87,25 @@ func testDatabase(t *testing.T, c database.Config) {
 	{
 		txCtx, tx, err := db.BeginTx(t.Context())
 		require.NoError(t, err)
-		row, err := tx.QueryRowTx(txCtx, "SELECT value FROM value WHERE id=$1", commitId)
+		row, err := tx.QueryRowTx(txCtx, selectValueSQL, commitId)
 		require.NoError(t, err)
 		var value string
 		err = row.Scan(&value)
 		require.NoError(t, err)
 		require.Equal(t, t.Name(), value)
+		require.NoError(t, tx.CloseTx(txCtx))
+	}
+	{
+		txCtx, tx, err := db.BeginTx(t.Context())
+		require.NoError(t, err)
+		rows, err := tx.QueryTx(txCtx, selectValueSQL, commitId)
+		require.NoError(t, err)
+		require.True(t, rows.Next())
+		var value string
+		err = rows.Scan(&value)
+		require.NoError(t, err)
+		require.Equal(t, t.Name(), value)
+		require.False(t, rows.Next())
 		require.NoError(t, tx.CloseTx(txCtx))
 	}
 
@@ -100,18 +115,26 @@ func testDatabase(t *testing.T, c database.Config) {
 		txCtx, tx, err := db.BeginTx(t.Context())
 		require.NoError(t, err)
 		rollbackId = database.NewID()
-		err = tx.ExecTx(txCtx, "INSERT INTO value(id,value) VALUES($1,$2)", rollbackId, t.Name())
+		err = tx.ExecTx(txCtx, insertValueSQL, rollbackId, t.Name())
 		require.NoError(t, err)
 		require.NoError(t, tx.CloseTx(txCtx))
 	}
 	{
 		txCtx, tx, err := db.BeginTx(t.Context())
 		require.NoError(t, err)
-		row, err := tx.QueryRowTx(txCtx, "SELECT value FROM value WHERE id=$1", rollbackId)
+		row, err := tx.QueryRowTx(txCtx, selectValueSQL, rollbackId)
 		require.NoError(t, err)
 		var value string
 		err = row.Scan(&value)
 		require.True(t, database.NoRows(err))
+		require.NoError(t, tx.CloseTx(txCtx))
+	}
+	{
+		txCtx, tx, err := db.BeginTx(t.Context())
+		require.NoError(t, err)
+		rows, err := tx.QueryTx(txCtx, selectValueSQL, rollbackId)
+		require.NoError(t, err)
+		require.False(t, rows.Next())
 		require.NoError(t, tx.CloseTx(txCtx))
 	}
 
