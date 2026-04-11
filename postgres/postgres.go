@@ -57,6 +57,11 @@ func NewConfig(dbName, user, password string, options ...ConfigSetter) *Config {
 	return config
 }
 
+// Name gets the name of the database represented by this configuration.
+func (c *Config) Name() string {
+	return fmt.Sprintf("%s@%s", c.dbName, c.address)
+}
+
 // Type gets the database type represented by this configuration.
 func (c *Config) Type() database.Type {
 	return Type

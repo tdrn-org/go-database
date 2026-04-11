@@ -49,6 +49,11 @@ func NewConfig(file string, options ...ConfigSetter) *Config {
 	return config
 }
 
+// Name gets the name of the database represented by this configuration.
+func (c *Config) Name() string {
+	return c.file
+}
+
 // Type gets the database type represented by this configuration.
 func (c *Config) Type() database.Type {
 	return Type

@@ -60,6 +60,8 @@ func (name Type) String() string {
 // Config interface provides a generic way to different
 // database drivers.
 type Config interface {
+	// Name gets the name of the database represented by this configuration.
+	Name() string
 	// Type gets the database type represented by this configuration.
 	Type() Type
 	// DriverName gets the name of the sql driver providing access to the database
@@ -88,8 +90,8 @@ type Driver struct {
 // Open opens the database represented by the given [Config] instance.
 func Open(config Config) (*Driver, error) {
 	databaseType := config.Type()
-	logger := slog.With(slog.Any("database", databaseType), slog.String("dsn", config.RedactedDSN()))
-	logger.Info("opening database")
+	logger := slog.With(slog.Any("database", databaseType), slog.String("name", config.Name()))
+	logger.Info("opening database", slog.String("dsn", config.RedactedDSN()))
 	db, err := sql.Open(config.DriverName(), config.DSN())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s database (cause: %w)", databaseType, err)
@@ -139,16 +141,16 @@ type Tx struct {
 
 // BeginTx ensures a database transaction is in place.
 //
-// Make sure to always close the returned Tx instance by invoking[Tx.CloseTx].
+// Make sure to always close the returned Tx instance by invoking[Tx.EndTx].
 //
 // Invoke [Tx.CommitTx] to commit all database updates performed within the BeginTx
-// block. If [Tx.CommitTx] is not called before the call to [Tx.CloseTx], it will
+// block. If [Tx.CommitTx] is not called before the call to [Tx.EndTx], it will
 // be implicitly rolled back.
 //
 // In case of an outer to BeginTx call for the identical context, the already
 // opened transaction is re-used. Closing the transaction behaves in the
 // same manner. Only after the last BeginTx block is closed by invoking
-// [Tx.CloseTx] and only if all BeginTx blocks have been commited by invoking
+// [Tx.EndTx] and only if all BeginTx blocks have been commited by invoking
 // [Tx.CommitTx] the actual database transaction is committed.
 func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 	outerTx, nestedTx := ctx.Value(d).(*Tx)
@@ -198,7 +200,7 @@ func (tx *Tx) QueryTx(ctx context.Context, query string, args ...any) (*sql.Rows
 }
 
 // Commit commits all changes since the corresponding [Driver.BeginTx] call.
-// See [Driver.BeginTx] and [Tx.CloseTx] for details of the database transaction
+// See [Driver.BeginTx] and [Tx.EndTx] for details of the database transaction
 // lifecycle.
 func (tx *Tx) CommitTx(ctx context.Context) error {
 	if tx.committed {
@@ -220,7 +222,7 @@ func (tx *Tx) CommitTx(ctx context.Context) error {
 //
 // If [Tx.CommitTx] has not been invoked for the transaction, the
 // transaction is implicitly rolled back.
-func (tx *Tx) CloseTx(ctx context.Context) error {
+func (tx *Tx) EndTx(ctx context.Context) error {
 	if tx == nil {
 		return nil
 	}
