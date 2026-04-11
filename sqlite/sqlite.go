@@ -20,6 +20,8 @@ package sqlite
 import (
 	_ "embed"
 	"fmt"
+	"maps"
+	"strings"
 
 	"github.com/tdrn-org/go-database"
 	_ "modernc.org/sqlite"
@@ -28,23 +30,51 @@ import (
 // Type of SQLite3 database configurations.
 const Type database.Type = "sqlite"
 
+// SQLite3 open modes
+type Mode string
+
+const (
+	// ModeRWC opens database for read and write operation and creates it if not yet existent.
+	ModeRWC Mode = "rwc"
+	// ModeRW opens database for read and write operation.
+	ModeRW Mode = "rw"
+	// ModeRO opens database for read operations only.
+	ModeRO Mode = "ro"
+	// ModeMemory opens a memory based database.
+	ModeMemory Mode = "memory"
+)
+
 // Config represents the SQLite3 database configuration.
 type Config struct {
 	file          string
+	mode          Mode
+	options       map[string]string
 	schemaScripts [][]byte
 }
 
 //go:embed schema.0.sql
 var schema0Script []byte
 
+var defaultOptions map[string]string = map[string]string{
+	"cache":         "shared",
+	"_foreign_keys": "on",
+	"_locking":      "EXCLUSIVE",
+	"_journal":      "WAL",
+}
+
 // NewConfig creates a new SQLite3 database configuration using the given options.
-func NewConfig(file string, options ...ConfigSetter) *Config {
+func NewConfig(file string, mode Mode, options ...ConfigSetter) *Config {
 	config := &Config{
 		file:          file,
+		mode:          mode,
+		options:       make(map[string]string),
 		schemaScripts: [][]byte{schema0Script},
 	}
 	for _, option := range options {
 		option.Apply(config)
+	}
+	if len(config.options) == 0 {
+		maps.Copy(config.options, defaultOptions)
 	}
 	return config
 }
@@ -65,12 +95,14 @@ func (c *Config) DriverName() string {
 	return "sqlite"
 }
 
-const sqlite3DSNPattern = "file:%s?mode=%s&cache=shared&_foreign_keys=on&_locking=EXCLUSIVE&_journal=WAL"
-
 // DSN get the Data Source Name to be used for accessing the database.
 func (c *Config) DSN() string {
-	mode := "rwc"
-	return fmt.Sprintf(sqlite3DSNPattern, c.file, mode)
+	dsn := strings.Builder{}
+	dsn.WriteString(fmt.Sprintf("file:%s?mode=%s", c.file, c.mode))
+	for key, value := range c.options {
+		dsn.WriteString(fmt.Sprintf("&%s=%s", key, value))
+	}
+	return dsn.String()
 }
 
 // DSN get the Data Source Name with any sensitive data redacted.
@@ -103,5 +135,19 @@ func (f ConfigSetterFunc) Apply(c *Config) {
 func WithSchemaScripts(scripts ...[]byte) ConfigSetter {
 	return ConfigSetterFunc(func(c *Config) {
 		c.schemaScripts = append(c.schemaScripts, scripts...)
+	})
+}
+
+// WithOption adds a SQLite specific option to the DSN.
+func WithOption(key, value string) ConfigSetter {
+	return ConfigSetterFunc(func(c *Config) {
+		c.options[key] = value
+	})
+}
+
+// WithOptions adds SQLite specific options to the DSN.
+func WithOptions(options map[string]string) ConfigSetter {
+	return ConfigSetterFunc(func(c *Config) {
+		maps.Copy(c.options, options)
 	})
 }

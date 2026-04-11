@@ -34,13 +34,13 @@ import (
 var schema1Script []byte
 
 func TestMemory(t *testing.T) {
-	config := memory.NewConfig(memory.WithSchemaScripts(schema1Script))
+	config := memory.NewConfig(sqlite.WithSchemaScripts(schema1Script))
 	testDatabase(t, config)
 }
 
 func TestSQLite(t *testing.T) {
 	tempDir := t.TempDir()
-	config := sqlite.NewConfig(filepath.Join(tempDir, "test.db"), sqlite.WithSchemaScripts(schema1Script))
+	config := sqlite.NewConfig(filepath.Join(tempDir, "test.db"), sqlite.ModeRWC, sqlite.WithSchemaScripts(schema1Script))
 	testDatabase(t, config)
 }
 

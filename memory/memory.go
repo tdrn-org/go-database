@@ -14,16 +14,18 @@
  * limitations under the License.
  */
 
-// Package memory provides a memory based database configuration.
+// Package memory provides a memory based database configuration (by actually
+// providing a SQLite3 database with memory backend).
+//
 // Any data stored in this type of database will be lost after the
 // database is closed.
 package memory
 
 import (
 	_ "embed"
-	"fmt"
 
 	"github.com/tdrn-org/go-database"
+	"github.com/tdrn-org/go-database/sqlite"
 	_ "modernc.org/sqlite"
 )
 
@@ -32,23 +34,12 @@ const Type database.Type = "memory"
 
 // Config represents the memory database configuration.
 type Config struct {
-	file          string
-	schemaScripts [][]byte
+	sqliteConfig database.Config
 }
 
-//go:embed schema.0.sql
-var schema0Script []byte
-
 // NewConfig creates a new memory database configuration using the given options.
-func NewConfig(options ...ConfigSetter) *Config {
-	config := &Config{
-		file:          "memory.db",
-		schemaScripts: [][]byte{schema0Script},
-	}
-	for _, option := range options {
-		option.Apply(config)
-	}
-	return config
+func NewConfig(options ...sqlite.ConfigSetter) *Config {
+	return &Config{sqliteConfig: sqlite.NewConfig("memory.db", sqlite.ModeMemory, options...)}
 }
 
 // Name gets the name of the database represented by this configuration.
@@ -64,46 +55,21 @@ func (c *Config) Type() database.Type {
 // DriverName gets the name of the sql driver providing access to the database
 // represented by this configuration.
 func (c *Config) DriverName() string {
-	return "sqlite"
+	return c.sqliteConfig.DriverName()
 }
-
-const sqlite3DSNPattern = "file:%s?mode=%s&cache=shared&_foreign_keys=on&_locking=EXCLUSIVE&_journal=WAL"
 
 // DSN get the Data Source Name to be used for accessing the database.
 func (c *Config) DSN() string {
-	mode := "memory"
-	return fmt.Sprintf(sqlite3DSNPattern, c.file, mode)
+	return c.sqliteConfig.DSN()
 }
 
 // DSN get the Data Source Name with any sensitive data redacted.
 func (c *Config) RedactedDSN() string {
-	return c.DSN()
+	return c.sqliteConfig.RedactedDSN()
 }
 
 // SchemaScripts gets the schema updated scripts to be applied to the database
 // during schema initialization or a schema update.
 func (c *Config) SchemaScripts() [][]byte {
-	return c.schemaScripts
-}
-
-// ConfigSetter interface is used to set database configuration options
-// during a [NewConfig] call.
-type ConfigSetter interface {
-	Apply(*Config)
-}
-
-// ConfigSetterFunc functions are used to set database configuration options
-// during a [NewConfig] call.
-type ConfigSetterFunc func(*Config)
-
-func (f ConfigSetterFunc) Apply(c *Config) {
-	f(c)
-}
-
-// WithSchemaScripts defines the schema update scripts to be applied
-// during database schema update.
-func WithSchemaScripts(scripts ...[]byte) ConfigSetter {
-	return ConfigSetterFunc(func(c *Config) {
-		c.schemaScripts = append(c.schemaScripts, scripts...)
-	})
+	return c.sqliteConfig.SchemaScripts()
 }
