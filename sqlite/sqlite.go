@@ -21,6 +21,7 @@ import (
 	_ "embed"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/tdrn-org/go-database"
@@ -99,8 +100,10 @@ func (c *Config) DriverName() string {
 func (c *Config) DSN() string {
 	dsn := strings.Builder{}
 	dsn.WriteString(fmt.Sprintf("file:%s?mode=%s", c.file, c.mode))
-	for key, value := range c.options {
-		dsn.WriteString(fmt.Sprintf("&%s=%s", key, value))
+	sortedKeys := slices.Collect(maps.Keys(c.options))
+	slices.Sort(sortedKeys)
+	for _, key := range sortedKeys {
+		dsn.WriteString(fmt.Sprintf("&%s=%s", key, c.options[key]))
 	}
 	return dsn.String()
 }

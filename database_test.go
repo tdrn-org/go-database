@@ -33,15 +33,48 @@ import (
 //go:embed testdata/schema.1.sql
 var schema1Script []byte
 
+func TestMemoryConfig(t *testing.T) {
+	config := memory.NewConfig(sqlite.WithOption("1", "a"), sqlite.WithOptions(map[string]string{"2": "b"}))
+	databaseType := config.Type()
+	require.Equal(t, memory.Type, databaseType)
+	name := config.Name()
+	require.Equal(t, "memory", name)
+	dsn := config.RedactedDSN()
+	require.Equal(t, "file:memory.db?mode=memory&1=a&2=b", dsn)
+}
+
 func TestMemory(t *testing.T) {
 	config := memory.NewConfig(sqlite.WithSchemaScripts(schema1Script))
 	testDatabase(t, config)
 }
 
+const sqliteTestDBFile string = "test.db"
+
+func TestSQLiteConfig(t *testing.T) {
+	config := sqlite.NewConfig(sqliteTestDBFile, sqlite.ModeRW, sqlite.WithOption("1", "a"), sqlite.WithOptions(map[string]string{"2": "b"}))
+	databaseType := config.Type()
+	require.Equal(t, sqlite.Type, databaseType)
+	name := config.Name()
+	require.Equal(t, sqliteTestDBFile, name)
+	dsn := config.RedactedDSN()
+	require.Equal(t, "file:test.db?mode=rw&1=a&2=b", dsn)
+}
+
 func TestSQLite(t *testing.T) {
 	tempDir := t.TempDir()
-	config := sqlite.NewConfig(filepath.Join(tempDir, "test.db"), sqlite.ModeRWC, sqlite.WithSchemaScripts(schema1Script))
+	config := sqlite.NewConfig(filepath.Join(tempDir, sqliteTestDBFile), sqlite.ModeRWC, sqlite.WithSchemaScripts(schema1Script))
 	testDatabase(t, config)
+}
+
+func TestPostgresConfig(t *testing.T) {
+	config, err := postgres.NewConfig("test", "user", "password", postgres.WithOption("1", "a"), postgres.WithOptions(map[string]string{"2": "b"}))
+	require.NoError(t, err)
+	databaseType := config.Type()
+	require.Equal(t, postgres.Type, databaseType)
+	name := config.Name()
+	require.Equal(t, "test@localhost:5432", name)
+	dsn := config.RedactedDSN()
+	require.Equal(t, "postgres://user:*****@localhost:5432/test?1=a&2=b", dsn)
 }
 
 func TestPostgres(t *testing.T) {
@@ -51,7 +84,8 @@ func TestPostgres(t *testing.T) {
 		t.Skip("PostgreSQL not available")
 	}
 	address := host + ":" + port
-	config := postgres.NewConfig("postgres", "postgres", "postgres", postgres.WithAddress(address), postgres.WithSchemaScripts(schema1Script))
+	config, err := postgres.NewConfig("postgres", "postgres", "postgres", postgres.WithAddress(address), postgres.WithSchemaScripts(schema1Script))
+	require.NoError(t, err)
 	testDatabase(t, config)
 }
 
