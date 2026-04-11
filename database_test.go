@@ -100,11 +100,10 @@ func testDatabase(t *testing.T, c database.Config) {
 	require.NoError(t, db.Ping(t.Context()))
 
 	// Update schema
-	target := database.Schema(1)
-	from, to, err := db.UpdateSchema(t.Context(), target)
+	from, to, err := db.UpdateSchema(t.Context())
 	require.NoError(t, err)
 	require.Equal(t, database.SchemaNone, from)
-	require.Equal(t, target, to)
+	require.Equal(t, 1, to)
 
 	// Commit
 	var commitId string

@@ -40,14 +40,9 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Schema version type.
-type Schema int
-
 const (
 	// SchemaNone indicates no schema has been setup so far.
-	SchemaNone Schema = -1
-	// Schema0 indicates the basic schema is in place.
-	Schema0 Schema = 0
+	SchemaNone int = -1
 )
 
 // Type represents the database type.
@@ -351,12 +346,12 @@ func (d *Driver) prepareStmt(ctx context.Context, query string) (*sql.Stmt, erro
 	return stmt, nil
 }
 
-// UpdateSchema is used to update the database schema to the given target schema version.
+// UpdateSchema is used to update the database schema to the lates schema version.
 //
 // The current schema version is determined by querying the database. Any necessary schema
 // update is performed by getting the update scripts via [Config.SchemaScripts] and executing
 // them as needed.
-func (d *Driver) UpdateSchema(ctx context.Context, target Schema) (Schema, Schema, error) {
+func (d *Driver) UpdateSchema(ctx context.Context) (int, int, error) {
 	traceCtx, span := d.tracer.Start(ctx, "UpdateSchema", trace.WithSpanKind(trace.SpanKindInternal))
 	defer span.End()
 
@@ -369,11 +364,12 @@ func (d *Driver) UpdateSchema(ctx context.Context, target Schema) (Schema, Schem
 	d.rollbackTx(traceCtx, tx)
 
 	// Update schema as needed
-	if fromVersion == target {
-		d.logger.Debug("database up-to-date", slog.Int("schema", int(fromVersion)))
+	targetVersion := len(d.schemaScripts) - 1
+	if fromVersion == targetVersion {
+		d.logger.Debug("database up-to-date", slog.Int("schema", fromVersion))
 	}
 	currentVersion := fromVersion
-	for currentVersion != target {
+	for currentVersion != targetVersion {
 		nextVersion := currentVersion + 1
 		tx, err = d.beginTx(traceCtx)
 		if err != nil {
@@ -394,9 +390,9 @@ func (d *Driver) UpdateSchema(ctx context.Context, target Schema) (Schema, Schem
 	return fromVersion, currentVersion, nil
 }
 
-func (d *Driver) execSchemaScript(ctx context.Context, tx *sql.Tx, currentVersion, nextVersion Schema) error {
+func (d *Driver) execSchemaScript(ctx context.Context, tx *sql.Tx, currentVersion, nextVersion int) error {
 	d.logger.Info("updating database schema", slog.Int("from", int(currentVersion)), slog.Int("to", int(nextVersion)))
-	if 0 <= nextVersion && nextVersion < Schema(len(d.schemaScripts)) {
+	if 0 <= nextVersion && nextVersion < len(d.schemaScripts) {
 		err := d.scriptTx(ctx, tx, d.schemaScripts[nextVersion])
 		if err != nil {
 			return err
@@ -411,17 +407,17 @@ func (d *Driver) execSchemaScript(ctx context.Context, tx *sql.Tx, currentVersio
 	return nil
 }
 
-func (d *Driver) querySchemaVersion(ctx context.Context, tx *sql.Tx) (Schema, error) {
+func (d *Driver) querySchemaVersion(ctx context.Context, tx *sql.Tx) (int, error) {
 	row, err := d.queryRowTx(ctx, tx, "SELECT schema FROM version")
 	if err != nil {
 		return SchemaNone, err
 	}
-	var schema Schema
-	err = row.Scan(&schema)
+	var version int
+	err = row.Scan(&version)
 	if err != nil {
 		return SchemaNone, err
 	}
-	return schema, nil
+	return version, nil
 }
 
 func (d *Driver) scriptTx(ctx context.Context, tx *sql.Tx, script []byte) error {
