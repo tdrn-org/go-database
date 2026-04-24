@@ -17,7 +17,6 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/tdrn-org/go-conf v0.0.5 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
@@ -30,9 +29,8 @@ require (
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.9.1
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/stretchr/testify v1.11.1
-	github.com/tdrn-org/go-tlsconf v0.0.9
 	go.opentelemetry.io/otel v1.43.0
 	golang.org/x/sys v0.42.0 // indirect
 	modernc.org/sqlite v1.48.2
