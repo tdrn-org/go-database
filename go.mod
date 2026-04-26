@@ -33,5 +33,5 @@ require (
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/otel v1.43.0
 	golang.org/x/sys v0.43.0 // indirect
-	modernc.org/sqlite v1.49.1
+	modernc.org/sqlite v1.50.0
 )
