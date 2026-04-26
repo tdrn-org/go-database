@@ -136,16 +136,16 @@ type Tx struct {
 
 // BeginTx ensures a database transaction is in place.
 //
-// Make sure to always close the returned Tx instance by invoking[Tx.EndTx].
+// Make sure to always close the returned Tx instance by invoking[Tx.RollbackUncommitedTx].
 //
 // Invoke [Tx.CommitTx] to commit all database updates performed within the BeginTx
-// block. If [Tx.CommitTx] is not called before the call to [Tx.EndTx], it will
+// block. If [Tx.CommitTx] is not called before the call to [Tx.RollbackUncommitedTx], it will
 // be implicitly rolled back.
 //
-// In case of an outer to BeginTx call for the identical context, the already
+// In case of an outer to BeginTx call for the given context, the already
 // opened transaction is re-used. Closing the transaction behaves in the
 // same manner. Only after the last BeginTx block is closed by invoking
-// [Tx.EndTx] and only if all BeginTx blocks have been commited by invoking
+// [Tx.RollbackUncommitedTx] and only if all BeginTx blocks have been commited by invoking
 // [Tx.CommitTx] the actual database transaction is committed.
 func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 	outerTx, nestedTx := ctx.Value(d).(*Tx)
@@ -195,8 +195,8 @@ func (tx *Tx) QueryTx(ctx context.Context, query string, args ...any) (*sql.Rows
 }
 
 // Commit commits all changes since the corresponding [Driver.BeginTx] call.
-// See [Driver.BeginTx] and [Tx.EndTx] for details of the database transaction
-// lifecycle.
+//
+// See [Driver.BeginTx] for details of the database transaction lifecycle.
 func (tx *Tx) CommitTx(ctx context.Context) error {
 	if tx.committed {
 		return fmt.Errorf("transaction already committed")
@@ -213,11 +213,10 @@ func (tx *Tx) CommitTx(ctx context.Context) error {
 	return nil
 }
 
-// Close closes the transaction returned by [Driver.BeginTx].
+// RollbackUncommitedTx performs a rollback in case the transaction has not been commited.
 //
-// If [Tx.CommitTx] has not been invoked for the transaction, the
-// transaction is implicitly rolled back.
-func (tx *Tx) EndTx(ctx context.Context) error {
+// See [Driver.BeginTx] for details of the database transaction lifecycle.
+func (tx *Tx) RollbackUncommitedTx(ctx context.Context) error {
 	if tx == nil {
 		return nil
 	}

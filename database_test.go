@@ -115,7 +115,7 @@ func testDatabase(t *testing.T, c database.Config) {
 		require.NoError(t, err)
 		err = tx.CommitTx(txCtx)
 		require.NoError(t, err)
-		require.NoError(t, tx.EndTx(txCtx))
+		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 	{
 		txCtx, tx, err := db.BeginTx(t.Context())
@@ -126,7 +126,7 @@ func testDatabase(t *testing.T, c database.Config) {
 		err = row.Scan(&value)
 		require.NoError(t, err)
 		require.Equal(t, t.Name(), value)
-		require.NoError(t, tx.EndTx(txCtx))
+		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 	{
 		txCtx, tx, err := db.BeginTx(t.Context())
@@ -139,7 +139,7 @@ func testDatabase(t *testing.T, c database.Config) {
 		require.NoError(t, err)
 		require.Equal(t, t.Name(), value)
 		require.False(t, rows.Next())
-		require.NoError(t, tx.EndTx(txCtx))
+		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 
 	// Rollback
@@ -150,7 +150,7 @@ func testDatabase(t *testing.T, c database.Config) {
 		rollbackId = database.NewID()
 		err = tx.ExecTx(txCtx, insertValueSQL, rollbackId, t.Name())
 		require.NoError(t, err)
-		require.NoError(t, tx.EndTx(txCtx))
+		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 	{
 		txCtx, tx, err := db.BeginTx(t.Context())
@@ -160,7 +160,7 @@ func testDatabase(t *testing.T, c database.Config) {
 		var value string
 		err = row.Scan(&value)
 		require.True(t, database.NoRows(err))
-		require.NoError(t, tx.EndTx(txCtx))
+		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 	{
 		txCtx, tx, err := db.BeginTx(t.Context())
@@ -168,7 +168,7 @@ func testDatabase(t *testing.T, c database.Config) {
 		rows, err := tx.QueryTx(txCtx, selectValueSQL, rollbackId)
 		require.NoError(t, err)
 		require.False(t, rows.Next())
-		require.NoError(t, tx.EndTx(txCtx))
+		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 
 	// Close
