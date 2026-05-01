@@ -43,4 +43,4 @@ jobs:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
       - name: Run SonarQube
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@v8
