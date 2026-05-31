@@ -2,7 +2,7 @@ module github.com/tdrn-org/go-database
 
 go 1.26
 
-require go.opentelemetry.io/otel/trace v1.43.0
+require go.opentelemetry.io/otel/trace v1.44.0
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -18,7 +18,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel/metric v1.43.0 // indirect
+	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
@@ -31,7 +31,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/stretchr/testify v1.11.1
-	go.opentelemetry.io/otel v1.43.0
+	go.opentelemetry.io/otel v1.44.0
 	golang.org/x/sys v0.44.0 // indirect
 	modernc.org/sqlite v1.51.0
 )
