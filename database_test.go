@@ -40,7 +40,7 @@ func TestMemoryConfig(t *testing.T) {
 	name := config.Name()
 	require.Equal(t, "memory", name)
 	dsn := config.RedactedDSN()
-	require.Equal(t, "file:memory.db?mode=memory&1=a&2=b", dsn)
+	require.Equal(t, "file:memory-1.db?mode=memory&1=a&2=b", dsn)
 }
 
 func TestMemory(t *testing.T) {
