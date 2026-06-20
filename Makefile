@@ -21,8 +21,12 @@ tidy:
 test: testdeps
 	go test -v -coverpkg=./... -covermode=atomic -coverprofile=coverage.out ./...
 
+.PHONY: fmt
+fmt:
+	go fmt ./...
+
 .PHONY: vet
-vet: testdeps
+vet:
 	go vet ./...
 
 .PHONY: staticcheck
