@@ -122,10 +122,13 @@ func testDatabase(t *testing.T, c database.Config) {
 		require.NoError(t, err)
 		row, err := tx.QueryRowTx(txCtx, selectValueSQL, commitId)
 		require.NoError(t, err)
-		var value string
-		err = row.Scan(&value)
+		var fields struct {
+			Id    string `db:"id"`
+			Value string `db:"value"`
+		}
+		err = database.ScanRow(row, &fields, "value")
 		require.NoError(t, err)
-		require.Equal(t, t.Name(), value)
+		require.Equal(t, t.Name(), fields.Value)
 		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 	{

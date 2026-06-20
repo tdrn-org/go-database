@@ -23,6 +23,8 @@ package memory
 
 import (
 	_ "embed"
+	"fmt"
+	"sync/atomic"
 
 	"github.com/tdrn-org/go-database"
 	"github.com/tdrn-org/go-database/sqlite"
@@ -37,9 +39,11 @@ type Config struct {
 	sqliteConfig database.Config
 }
 
+var nextDBIndex atomic.Uint64
+
 // NewConfig creates a new memory database configuration using the given options.
 func NewConfig(options ...sqlite.ConfigSetter) *Config {
-	return &Config{sqliteConfig: sqlite.NewConfig("memory.db", sqlite.ModeMemory, options...)}
+	return &Config{sqliteConfig: sqlite.NewConfig(fmt.Sprintf("memory-%d.db", nextDBIndex.Add(1)), sqlite.ModeMemory, options...)}
 }
 
 // Name gets the name of the database represented by this configuration.
