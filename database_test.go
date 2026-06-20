@@ -89,6 +89,11 @@ func TestPostgres(t *testing.T) {
 	testDatabase(t, config)
 }
 
+type testFields struct {
+	Id    string `db:"id"`
+	Value string `db:"value"`
+}
+
 func testDatabase(t *testing.T, c database.Config) {
 	const insertValueSQL string = "INSERT INTO value(id,value) VALUES($1,$2)"
 	const selectValueSQL string = "SELECT value FROM value WHERE id=$1"
@@ -122,11 +127,8 @@ func testDatabase(t *testing.T, c database.Config) {
 		require.NoError(t, err)
 		row, err := tx.QueryRowTx(txCtx, selectValueSQL, commitId)
 		require.NoError(t, err)
-		var fields struct {
-			Id    string `db:"id"`
-			Value string `db:"value"`
-		}
-		err = database.ScanRow(row, &fields, "value")
+		fields := &testFields{}
+		err = database.ScanRow(row, fields, "value")
 		require.NoError(t, err)
 		require.Equal(t, t.Name(), fields.Value)
 		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
@@ -137,10 +139,10 @@ func testDatabase(t *testing.T, c database.Config) {
 		rows, err := tx.QueryTx(txCtx, selectValueSQL, commitId)
 		require.NoError(t, err)
 		require.True(t, rows.Next())
-		var value string
-		err = rows.Scan(&value)
+		fields := &testFields{}
+		err = database.Scan(rows, fields)
 		require.NoError(t, err)
-		require.Equal(t, t.Name(), value)
+		require.Equal(t, t.Name(), fields.Value)
 		require.False(t, rows.Next())
 		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
@@ -160,8 +162,8 @@ func testDatabase(t *testing.T, c database.Config) {
 		require.NoError(t, err)
 		row, err := tx.QueryRowTx(txCtx, selectValueSQL, rollbackId)
 		require.NoError(t, err)
-		var value string
-		err = row.Scan(&value)
+		fields := &testFields{}
+		err = row.Scan(fields)
 		require.True(t, database.NoRows(err))
 		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
