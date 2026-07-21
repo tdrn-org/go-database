@@ -176,6 +176,23 @@ func testDatabase(t *testing.T, c database.Config) {
 		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
 	}
 
+	// Currentx
+	{
+		// No Tx
+		tx, exists := db.CurrentTx(t.Context())
+		require.Nil(t, tx)
+		require.False(t, exists)
+
+		// Tx
+		txCtx, _, err := db.BeginTx(t.Context())
+		require.NoError(t, err)
+		tx, exists = db.CurrentTx(txCtx)
+		require.NotNil(t, tx)
+		require.True(t, exists)
+		require.NoError(t, tx.RollbackUncommitedTx(txCtx))
+
+	}
+
 	// Close
 	require.NoError(t, db.Close())
 }

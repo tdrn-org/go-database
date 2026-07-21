@@ -134,6 +134,14 @@ type Tx struct {
 	span      trace.Span
 }
 
+// CurrentTx returns the database transaction associated with the given
+// [context.Context]. The 2nd return value indicates whether there is a
+// database transaction associated with the given context or not.
+func (d *Driver) CurrentTx(ctx context.Context) (*Tx, bool) {
+	tx, exists := ctx.Value(d).(*Tx)
+	return tx, exists
+}
+
 // BeginTx ensures a database transaction is in place.
 //
 // Make sure to always close the returned Tx instance by invoking[Tx.RollbackUncommitedTx].
