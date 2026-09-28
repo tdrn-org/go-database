@@ -23,4 +23,4 @@ jobs:
     uses: tdrn-org/.github/.github/workflows/release-go-library.yml@main
     with:
       sha: ${{ github.event.workflow_run.head_sha || github.sha }}
-      dry-run: true
+      dry-run: false
