@@ -1,0 +1,26 @@
+name: release
+
+# Tags a new version when nothing but dependencies changed since the last tag.
+# The gate itself lives in tdrn-org/.github — this file only decides when to run
+# it and grants the permission it needs.
+#
+# dry-run stays true until the workflow has run once in this repository with the
+# expected result; set it to false afterwards to create real releases.
+
+on:
+  workflow_run:
+    workflows: [build]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write      # required: a called workflow can only narrow permissions
+
+jobs:
+  release:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    uses: tdrn-org/.github/.github/workflows/release-go-library.yml@main
+    with:
+      sha: ${{ github.event.workflow_run.head_sha || github.sha }}
+      dry-run: true
