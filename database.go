@@ -293,7 +293,7 @@ func (d *Driver) rollbackTx(ctx context.Context, tx *sql.Tx) error {
 }
 
 func (d *Driver) execTx(ctx context.Context, tx *sql.Tx, query string, args ...any) error {
-	traceCtx, span := d.tracer.Start(ctx, "ExecTx", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.Start(ctx, "ExecTx", trace.WithSpanKind(trace.SpanKindInternal), trace.WithAttributes(attribute.String("query", query)))
 	defer span.End()
 
 	d.logger.Debug("sql exec", slog.String("query", query))
@@ -314,7 +314,7 @@ func (d *Driver) execTx(ctx context.Context, tx *sql.Tx, query string, args ...a
 }
 
 func (d *Driver) queryRowTx(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Row, error) {
-	traceCtx, span := d.tracer.Start(ctx, "QueryRowTx", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.Start(ctx, "QueryRowTx", trace.WithSpanKind(trace.SpanKindInternal), trace.WithAttributes(attribute.String("query", query)))
 	defer span.End()
 
 	d.logger.Debug("sql query row", slog.String("query", query))
@@ -327,7 +327,7 @@ func (d *Driver) queryRowTx(ctx context.Context, tx *sql.Tx, query string, args 
 }
 
 func (d *Driver) queryTx(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error) {
-	traceCtx, span := d.tracer.Start(ctx, "QueryTx", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.Start(ctx, "QueryTx", trace.WithSpanKind(trace.SpanKindInternal), trace.WithAttributes(attribute.String("query", query)))
 	defer span.End()
 
 	d.logger.Debug("sql query", slog.String("query", query))
