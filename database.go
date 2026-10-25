@@ -144,6 +144,13 @@ func (d *Driver) CurrentTx(ctx context.Context) (*Tx, bool) {
 
 // BeginTx ensures a database transaction is in place.
 //
+// See [Driver.BeginTxWithOptions] for further details.
+func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
+	return d.BeginTxWithOptions(ctx, nil)
+}
+
+// BeginTxWithOptions ensures a database transaction is in place using the given TX options.
+//
 // Make sure to always close the returned Tx instance by invoking[Tx.RollbackUncommitedTx].
 //
 // Invoke [Tx.CommitTx] to commit all database updates performed within the BeginTx
@@ -155,7 +162,7 @@ func (d *Driver) CurrentTx(ctx context.Context) (*Tx, bool) {
 // same manner. Only after the last BeginTx block is closed by invoking
 // [Tx.RollbackUncommitedTx] and only if all BeginTx blocks have been commited by invoking
 // [Tx.CommitTx] the actual database transaction is committed.
-func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
+func (d *Driver) BeginTxWithOptions(ctx context.Context, opts *sql.TxOptions) (context.Context, *Tx, error) {
 	outerTx, nestedTx := ctx.Value(d).(*Tx)
 	if nestedTx {
 		tx := txPool.Get().(*Tx)
@@ -166,7 +173,7 @@ func (d *Driver) BeginTx(ctx context.Context) (context.Context, *Tx, error) {
 		return ctx, tx, nil
 	}
 	traceCtx, span := d.tracer.Start(ctx, "Tx", trace.WithSpanKind(trace.SpanKindInternal))
-	sqlTx, err := d.beginTx(traceCtx)
+	sqlTx, err := d.beginTx(traceCtx, opts)
 	if err != nil {
 		traceError(span, err)
 		span.End()
@@ -248,11 +255,11 @@ func (tx *Tx) RollbackUncommitedTx(ctx context.Context) error {
 	return err
 }
 
-func (d *Driver) beginTx(ctx context.Context) (*sql.Tx, error) {
+func (d *Driver) beginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	traceCtx, span := d.tracer.Start(ctx, "BeginTx", trace.WithSpanKind(trace.SpanKindInternal))
 	defer span.End()
 
-	tx, err := d.db.BeginTx(traceCtx, nil)
+	tx, err := d.db.BeginTx(traceCtx, opts)
 	if err != nil {
 		traceError(span, err)
 		return nil, fmt.Errorf("begin transaction failure (cause: %w)", err)
@@ -363,7 +370,7 @@ func (d *Driver) UpdateSchema(ctx context.Context) (int, int, error) {
 	defer span.End()
 
 	// Determine schema version (assuming none, in case of error)
-	tx, err := d.beginTx(traceCtx)
+	tx, err := d.beginTx(traceCtx, &sql.TxOptions{ReadOnly: false})
 	if err != nil {
 		return SchemaNone, SchemaNone, traceError(span, err)
 	}
@@ -378,7 +385,7 @@ func (d *Driver) UpdateSchema(ctx context.Context) (int, int, error) {
 	currentVersion := fromVersion
 	for currentVersion != targetVersion {
 		nextVersion := currentVersion + 1
-		tx, err = d.beginTx(traceCtx)
+		tx, err = d.beginTx(traceCtx, &sql.TxOptions{ReadOnly: false})
 		if err != nil {
 			return fromVersion, currentVersion, traceError(span, err)
 		}
