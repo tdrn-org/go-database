@@ -27,16 +27,15 @@ import (
 	"io"
 	"log/slog"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
+	tracehelper "github.com/tdrn-org/go-trace"
 	"go.opentelemetry.io/otel/codes"
+	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -78,7 +77,7 @@ type Driver struct {
 	preparedStmts map[string]*sql.Stmt
 	schemaScripts [][]byte
 	logger        *slog.Logger
-	tracer        trace.Tracer
+	tracer        tracehelper.TracePoint
 	mutex         sync.RWMutex
 }
 
@@ -97,7 +96,7 @@ func Open(config Config) (*Driver, error) {
 		preparedStmts: make(map[string]*sql.Stmt),
 		schemaScripts: config.SchemaScripts(),
 		logger:        logger,
-		tracer:        otel.Tracer(reflect.TypeFor[Driver]().PkgPath(), trace.WithInstrumentationAttributes(attribute.Stringer("database", databaseType), attribute.String("dsn", config.RedactedDSN()))),
+		tracer:        *tracehelper.NewTracePoint[Driver]("", trace.WithInstrumentationAttributes(semconv.DBSystemNameKey.String(string(databaseType)), semconv.DBClientConnectionPoolName(config.RedactedDSN()))),
 	}
 	return driver, nil
 }
@@ -172,7 +171,7 @@ func (d *Driver) BeginTxWithOptions(ctx context.Context, opts *sql.TxOptions) (c
 		tx.now = outerTx.now
 		return ctx, tx, nil
 	}
-	traceCtx, span := d.tracer.Start(ctx, "Tx", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.StartInternal(ctx)
 	sqlTx, err := d.beginTx(traceCtx, opts)
 	if err != nil {
 		traceError(span, err)
@@ -256,7 +255,7 @@ func (tx *Tx) RollbackUncommitedTx(ctx context.Context) error {
 }
 
 func (d *Driver) beginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	traceCtx, span := d.tracer.Start(ctx, "BeginTx", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.StartInternal(ctx)
 	defer span.End()
 
 	tx, err := d.db.BeginTx(traceCtx, opts)
@@ -268,7 +267,7 @@ func (d *Driver) beginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, err
 }
 
 func (d *Driver) commitTx(ctx context.Context, tx *sql.Tx) error {
-	_, span := d.tracer.Start(ctx, "CommitTx", trace.WithSpanKind(trace.SpanKindInternal))
+	_, span := d.tracer.StartInternal(ctx)
 	defer span.End()
 
 	err := tx.Commit()
@@ -280,7 +279,7 @@ func (d *Driver) commitTx(ctx context.Context, tx *sql.Tx) error {
 }
 
 func (d *Driver) rollbackTx(ctx context.Context, tx *sql.Tx) error {
-	_, span := d.tracer.Start(ctx, "RollbackTx", trace.WithSpanKind(trace.SpanKindInternal))
+	_, span := d.tracer.StartInternal(ctx)
 	defer span.End()
 
 	err := tx.Rollback()
@@ -293,7 +292,7 @@ func (d *Driver) rollbackTx(ctx context.Context, tx *sql.Tx) error {
 }
 
 func (d *Driver) execTx(ctx context.Context, tx *sql.Tx, query string, args ...any) error {
-	traceCtx, span := d.tracer.Start(ctx, "ExecTx", trace.WithSpanKind(trace.SpanKindInternal), trace.WithAttributes(attribute.String("query", query)))
+	traceCtx, span := d.tracer.StartInternal(ctx, semconv.DBQueryText(query))
 	defer span.End()
 
 	d.logger.Debug("sql exec", slog.String("query", query))
@@ -314,7 +313,7 @@ func (d *Driver) execTx(ctx context.Context, tx *sql.Tx, query string, args ...a
 }
 
 func (d *Driver) queryRowTx(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Row, error) {
-	traceCtx, span := d.tracer.Start(ctx, "QueryRowTx", trace.WithSpanKind(trace.SpanKindInternal), trace.WithAttributes(attribute.String("query", query)))
+	traceCtx, span := d.tracer.StartInternal(ctx, semconv.DBQueryText(query))
 	defer span.End()
 
 	d.logger.Debug("sql query row", slog.String("query", query))
@@ -327,7 +326,7 @@ func (d *Driver) queryRowTx(ctx context.Context, tx *sql.Tx, query string, args 
 }
 
 func (d *Driver) queryTx(ctx context.Context, tx *sql.Tx, query string, args ...any) (*sql.Rows, error) {
-	traceCtx, span := d.tracer.Start(ctx, "QueryTx", trace.WithSpanKind(trace.SpanKindInternal), trace.WithAttributes(attribute.String("query", query)))
+	traceCtx, span := d.tracer.StartInternal(ctx, semconv.DBQueryText(query))
 	defer span.End()
 
 	d.logger.Debug("sql query", slog.String("query", query))
@@ -366,7 +365,7 @@ func (d *Driver) prepareStmt(ctx context.Context, query string) (*sql.Stmt, erro
 // update is performed by getting the update scripts via [Config.SchemaScripts] and executing
 // them as needed.
 func (d *Driver) UpdateSchema(ctx context.Context) (int, int, error) {
-	traceCtx, span := d.tracer.Start(ctx, "UpdateSchema", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.StartInternal(ctx)
 	defer span.End()
 
 	// Determine schema version (assuming none, in case of error)
@@ -435,7 +434,7 @@ func (d *Driver) querySchemaVersion(ctx context.Context, tx *sql.Tx) (int, error
 }
 
 func (d *Driver) scriptTx(ctx context.Context, tx *sql.Tx, script []byte) error {
-	traceCtx, span := d.tracer.Start(ctx, "ScriptTx", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.StartInternal(ctx)
 	defer span.End()
 
 	reader, err := newSQLScriptReader(script)
@@ -457,7 +456,7 @@ func (d *Driver) scriptTx(ctx context.Context, tx *sql.Tx, script []byte) error 
 }
 
 func (d *Driver) scriptExecTx(ctx context.Context, tx *sql.Tx, statement string) error {
-	traceCtx, span := d.tracer.Start(ctx, "ScriptExecTx", trace.WithSpanKind(trace.SpanKindInternal))
+	traceCtx, span := d.tracer.StartInternal(ctx)
 	defer span.End()
 
 	d.logger.Debug("sql script exec", slog.String("statement", statement))
