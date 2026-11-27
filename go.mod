@@ -11,7 +11,7 @@ require (
 	github.com/tdrn-org/go-trace v0.0.2
 	go.opentelemetry.io/otel v1.47.0
 	go.opentelemetry.io/otel/trace v1.47.0
-	modernc.org/sqlite v1.62.0
+	modernc.org/sqlite v1.63.0
 )
 
 require (
